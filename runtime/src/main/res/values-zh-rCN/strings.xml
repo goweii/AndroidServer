@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="android_server_notification_channel_name">HTTP 服务器</string>
+    <string name="android_server_notification_channel_desc">一个 HTTP 服务器</string>
+
+    <string name="android_server_http_server_name">HTTP 服务器</string>
+    <string name="android_server_http_server_state_preparing">准备中&#8230;</string>
+    <string name="android_server_http_server_state_starting">启动中&#8230;</string>
+    <string name="android_server_http_server_state_failed">启动失败</string>
+    <string name="android_server_http_server_state_running">运行中</string>
+
+    <string name="android_server_btn_stop">停止</string>
+    <string name="android_server_btn_Restart">重启</string>
+</resources>

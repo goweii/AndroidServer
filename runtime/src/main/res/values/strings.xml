@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="android_server_notification_channel_id" translatable="false">http_server</string>
+    <string name="android_server_notification_channel_name">HTTP Server</string>
+    <string name="android_server_notification_channel_desc">A HTTP server.</string>
+
+    <string name="android_server_http_server_name">HTTP Server</string>
+    <string name="android_server_http_server_state_preparing">Preparing&#8230;</string>
+    <string name="android_server_http_server_state_starting">Starting&#8230;</string>
+    <string name="android_server_http_server_state_failed">Failed</string>
+    <string name="android_server_http_server_state_running">Running</string>
+
+    <string name="android_server_btn_stop">Stop</string>
+    <string name="android_server_btn_Restart">Restart</string>
+</resources>
