@@ -1,7 +1,7 @@
 package per.goweii.androidserver.runtime.annotation
 
 import androidx.annotation.Keep
-import per.goweii.androidserver.runtime.HttpMethod
+import per.goweii.androidserver.runtime.http.HttpMethod
 
 @Keep
 @Retention(AnnotationRetention.RUNTIME)

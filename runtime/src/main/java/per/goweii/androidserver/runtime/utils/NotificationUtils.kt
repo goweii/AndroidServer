@@ -14,7 +14,7 @@ internal object NotificationUtils {
 
         createNotificationChannel(
             context = context,
-            importance = NotificationManagerCompat.IMPORTANCE_HIGH,
+            importance = NotificationManagerCompat.IMPORTANCE_DEFAULT,
             id = channelId,
             name = context.getString(R.string.android_server_notification_channel_name),
             description = context.getString(R.string.android_server_notification_channel_desc),
@@ -45,12 +45,18 @@ internal object NotificationUtils {
                     intent.component = launchIntent.component
                     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     context.startActivity(intent)
-                    val pendingIntent = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_IMMUTABLE)
+                    val pendingIntent = PendingIntent.getActivity(
+                        context,
+                        intent.interProcessHashCode,
+                        intent,
+                        PendingIntent.FLAG_IMMUTABLE,
+                    )
                     setContentIntent(pendingIntent)
                 }
             }
     }
 
+    @Suppress("SameParameterValue")
     private fun createNotificationChannel(
         context: Context,
         importance: Int,

@@ -6,11 +6,6 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <application>
-        <service
-            android:name=".service.HttpService"
-            android:exported="false"
-            android:foregroundServiceType="specialUse" />
-
         <receiver android:name=".receiver.SystemLocaleChangeReceiver"
             android:exported="false">
             <intent-filter>

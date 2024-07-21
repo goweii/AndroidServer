@@ -1,10 +1,12 @@
-package per.goweii.androidserver.runtime
+package per.goweii.androidserver.runtime.http
 
 import com.koushikdutta.async.http.server.AsyncHttpServerRequest
 import com.koushikdutta.async.http.server.AsyncHttpServerResponse
+import per.goweii.androidserver.runtime.exception.RequestMethodParseException
+import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
 
-internal class RequestMethod(
+internal class HttpRequestMethod(
     val instance: Any,
     val method: Method,
 ) {
@@ -37,7 +39,11 @@ internal class RequestMethod(
     fun invoke(request: AsyncHttpServerRequest, response: AsyncHttpServerResponse) {
         val args = requestParams.map { it.extractValue(request, response) }.toTypedArray()
 
-        val returnValue = method.invoke(instance, *args)
+        val returnValue = try {
+            method.invoke(instance, *args)
+        } catch (e: InvocationTargetException) {
+            throw e.targetException
+        }
 
         returnParam.sendValue(request, response, returnValue)
 

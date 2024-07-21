@@ -1,12 +1,12 @@
 package per.goweii.androidserver.http
 
-import per.goweii.androidserver.runtime.HttpMethod
+import per.goweii.androidserver.runtime.http.HttpMethod
 import per.goweii.androidserver.runtime.annotation.PathVariable
 import per.goweii.androidserver.runtime.annotation.QueryParam
 import per.goweii.androidserver.runtime.annotation.RestController
 import per.goweii.androidserver.runtime.annotation.RequestMapping
 
-@RestController(path = "/user")
+@RestController(path = "/api/user")
 class LoginController {
     @RequestMapping(method = HttpMethod.GET, path = "/login/{account}")
     fun login(

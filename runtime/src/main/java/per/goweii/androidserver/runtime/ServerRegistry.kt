@@ -7,60 +7,86 @@ import androidx.annotation.WorkerThread
 import dalvik.system.DexFile
 import per.goweii.androidserver.runtime.annotation.RequestMapping
 import per.goweii.androidserver.runtime.annotation.RestController
+import per.goweii.androidserver.runtime.http.HttpDelegate
+import per.goweii.androidserver.runtime.http.HttpPath
+import per.goweii.androidserver.runtime.http.HttpRequest
+import per.goweii.androidserver.runtime.http.HttpRequestMethod
+import per.goweii.androidserver.runtime.ws.WebSocketController
+import per.goweii.androidserver.runtime.ws.WebSocketDelegate
 import java.util.concurrent.locks.ReentrantLock
 
-internal object HttpRegistry {
-    private const val TAG = "HttpRegistry"
+internal object ServerRegistry {
+    private const val TAG = "ServerRegistry"
 
-    private val delegates = arrayListOf<HttpRequestDelegate>()
+    enum class ScanState {
+        IDLE, SCANNING, COMPLETED
+    }
+
+    private val delegates = arrayListOf<RestDelegate>()
 
     private val scanLock = ReentrantLock()
     private val scanCondition = scanLock.newCondition()
 
     @Volatile
-    private var scanState: Boolean? = null
+    private var scanState: ScanState = ScanState.IDLE
 
     @WorkerThread
-    fun loadDelegate(application: Application): List<HttpRequestDelegate> {
-        if (scanState == true) {
-            return ArrayList<HttpRequestDelegate>(delegates.size)
-                .also { it.addAll(delegates) }
+    fun init(application: Application) {
+        if (scanState == ScanState.COMPLETED) {
+            return
         }
 
         scanLock.lock()
         try {
             when (scanState) {
-                true -> {
-                    // do nothing
-                }
-
-                false -> {
-                    scanCondition.await()
-                }
-
-                null -> {
-                    scanState = false
+                ScanState.IDLE -> {
+                    scanState = ScanState.SCANNING
                     try {
-                        scan(application)
-                        scanState = true
+                        scanInternal(application)
+                        scanState = ScanState.COMPLETED
                         scanCondition.signalAll()
                     } catch (e: Throwable) {
-                        scanState = null
+                        scanState = ScanState.IDLE
                         throw e
                     }
                 }
+
+                ScanState.SCANNING -> scanCondition.await()
+                ScanState.COMPLETED -> {}
             }
         } finally {
             scanLock.unlock()
         }
+    }
 
-        return ArrayList<HttpRequestDelegate>(delegates.size)
-            .also { it.addAll(delegates) }
+    private fun waitScanDone() {
+        if (scanState == ScanState.COMPLETED) {
+            return
+        }
+
+        scanLock.lock()
+        try {
+            when (scanState) {
+                ScanState.IDLE -> throw IllegalStateException("Did you forget to initialize?")
+                ScanState.SCANNING -> scanCondition.await()
+                ScanState.COMPLETED -> {}
+            }
+        } finally {
+            scanLock.unlock()
+        }
+    }
+
+    fun getDelegates(pathMatcher: PathMatcher): List<RestDelegate> {
+        waitScanDone()
+        return delegates
+            .asSequence()
+            .filter { pathMatcher.match(it.path.path) }
+            .toList()
     }
 
     @WorkerThread
-    private fun scan(application: Application) {
-        Log.d("HttpRegistry", "start scan")
+    private fun scanInternal(application: Application) {
+        Log.d(TAG, "start scan")
 
         val startTime = SystemClock.elapsedRealtime()
         try {
@@ -70,7 +96,7 @@ internal object HttpRegistry {
                 ?.filter { it.isNotBlank() }
                 ?.forEach { apkPaths.add(it) }
 
-            val delegates = arrayListOf<HttpRequestDelegate>()
+            val delegates = arrayListOf<RestDelegate>()
 
             apkPaths.forEach {
                 if (Thread.interrupted()) {
@@ -85,7 +111,6 @@ internal object HttpRegistry {
                 }
             }
 
-            delegates.sortBy { it.path }
             this.delegates.clear()
             this.delegates.addAll(delegates)
         } finally {
@@ -95,11 +120,11 @@ internal object HttpRegistry {
     }
 
     @Suppress("DEPRECATION")
-    private fun scanDex(classLoader: ClassLoader, apkPath: String): List<HttpRequestDelegate> {
+    private fun scanDex(classLoader: ClassLoader, apkPath: String): List<RestDelegate> {
         val dexFile = DexFile(apkPath)
         val enumeration = dexFile.entries()
 
-        val delegates = arrayListOf<HttpRequestDelegate>()
+        val delegates = arrayListOf<RestDelegate>()
 
         while (enumeration.hasMoreElements()) {
             if (Thread.interrupted()) {
@@ -124,8 +149,8 @@ internal object HttpRegistry {
             if (restController != null) {
                 Log.i(TAG, "find: $element")
                 try {
-                    val list = parseRestController(clazz, restController)
-                    delegates.addAll(list)
+                    val delegate = parseRestDelegate(clazz)
+                    delegates.add(delegate)
                 } catch (e: InterruptedException) {
                     throw e
                 } catch (e: Throwable) {
@@ -162,12 +187,24 @@ internal object HttpRegistry {
         return element.matches(classNameRegex)
     }
 
-    private fun parseRestController(clazz: Class<*>, restController: RestController): List<HttpRequestDelegate> {
+    private fun parseRestDelegate(clazz: Class<*>): RestDelegate {
+        val restController = clazz.getAnnotation(RestController::class.java)!!
+
+        val httpPath = HttpPath(restController.path)
+
         val constructor = clazz.getConstructor()
         constructor.isAccessible = true
         val instance = constructor.newInstance()
 
-        val delegates = arrayListOf<HttpRequestDelegate>()
+        if (WebSocketController::class.java.isAssignableFrom(clazz)) {
+            return WebSocketDelegate(
+                path = httpPath,
+                protocol = restController.protocol,
+                instance = instance as WebSocketController,
+            )
+        }
+
+        val requests = arrayListOf<HttpRequest>()
 
         val methods = clazz.methods
         methods.forEach { method ->
@@ -180,25 +217,22 @@ internal object HttpRegistry {
             val requestMapping = method.getAnnotation(RequestMapping::class.java)
                 ?: return@forEach
 
-            val httpMethod = requestMapping.method
-            val httpPath = StringBuilder(restController.path)
-                .append(requestMapping.path)
-                .toString()
-
-            val requestMethod = RequestMethod(
-                instance = instance,
-                method = method,
+            val request = HttpRequest(
+                method = requestMapping.method,
+                path = httpPath + requestMapping.path,
+                requestMethod = HttpRequestMethod(
+                    instance = instance,
+                    method = method,
+                ),
             )
 
-            val delegate = HttpRequestDelegate(
-                method = httpMethod,
-                path = httpPath,
-                requestMethod = requestMethod,
-            )
-
-            delegates.add(delegate)
+            requests.add(request)
         }
 
-        return delegates
+        return HttpDelegate(
+            path = httpPath,
+            protocol = restController.protocol,
+            requests = requests,
+        )
     }
 }

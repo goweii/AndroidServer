@@ -2,88 +2,126 @@ package per.goweii.androidserver.runtime.service
 
 import android.app.PendingIntent
 import android.app.Service
+import android.content.Context
 import android.content.Intent
 import android.os.Build
-import android.os.Handler
 import android.os.IBinder
-import android.os.Looper
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import com.koushikdutta.async.http.server.AsyncHttpServer
-import per.goweii.androidserver.runtime.HttpMethod
-import per.goweii.androidserver.runtime.HttpRegistry
-import per.goweii.androidserver.runtime.NoRequestBody
 import per.goweii.androidserver.runtime.R
+import per.goweii.androidserver.runtime.HttpServer
 import per.goweii.androidserver.runtime.utils.NotificationUtils
-import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
+import per.goweii.androidserver.runtime.utils.interProcessHashCode
+import java.lang.reflect.ParameterizedType
 
-class HttpService : Service() {
+abstract class HttpService<S : HttpServer> : Service() {
     companion object {
-        private const val TAG = "HttpService"
-
-        private const val DEFAULT_PORT = 2476
-
         private const val EXTRA_SERVER_NAME = "server_name"
-        private const val EXTRA_SERVER_PORT = "server_port"
 
         private const val EXTRA_COMMAND = "command"
 
-        private const val COMMAND_RESTART = 1
-        private const val COMMAND_STOP = 2
+        inline fun <reified T : HttpService<*>> start(
+            context: Context,
+            serverName: String? = null,
+        ) = start(
+            context = context,
+            serverClass = T::class.java,
+            serverName = serverName,
+        )
+
+        fun start(
+            context: Context,
+            serverClass: Class<out HttpService<*>>,
+            serverName: String? = null,
+        ) {
+            val intent = Intent(context, serverClass)
+            serverName?.let { intent.putExtra(EXTRA_SERVER_NAME, it) }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
     }
 
-    private val id = System.identityHashCode(this)
+    enum class Command {
+        RESTART,
+        STOP,
+    }
 
-    private lateinit var executorService: ExecutorService
-    private lateinit var mainHandler: Handler
+    @Suppress("UNCHECKED_CAST")
+    private val server: S by lazy {
+        val superClass = javaClass.genericSuperclass
+        superClass as ParameterizedType
+        val sType = superClass.actualTypeArguments.first()
+        sType as Class<*>
+        val constructor = sType.getConstructor()
+        constructor.newInstance() as S
+    }
 
-    private val httpServer = AsyncHttpServer()
+    private val id: Int = server.interProcessHashCode
 
-    private var serviceName: String? = null
-    private var port: Int? = null
+    private var serverName: String? = null
+    private var serverHost: String? = null
+    private var serverPort: Int? = null
 
     override fun onBind(intent: Intent): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
-        executorService = Executors.newSingleThreadExecutor()
-        mainHandler = Handler(Looper.getMainLooper())
-        httpServer.setErrorCallback {
-            Log.e(TAG, it.toString())
-        }
-    }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        serviceName = intent?.getStringExtra(EXTRA_SERVER_NAME)
+        Log.d(javaClass.simpleName, "onCreate: $id")
 
         showNotification(
             contentText = getString(R.string.android_server_http_server_state_preparing),
             btnText = getString(R.string.android_server_btn_stop),
-            command = COMMAND_STOP,
+            command = Command.STOP,
         )
 
-        val command: Int? =
-            if (intent?.hasExtra(EXTRA_COMMAND) == true) {
-                intent.getIntExtra(EXTRA_COMMAND, 0)
-            } else {
-                null
-            }
+        server.onStart = {
+            showNotification(
+                contentText = getString(R.string.android_server_http_server_state_starting),
+                btnText = getString(R.string.android_server_btn_stop),
+                command = Command.STOP,
+            )
+        }
+
+        server.onRunning = {
+            showNotification(
+                contentText = getString(R.string.android_server_http_server_state_running),
+                btnText = getString(R.string.android_server_btn_stop),
+                command = Command.STOP,
+            )
+        }
+
+        server.onFailed = {
+            showNotification(
+                contentText = getString(R.string.android_server_http_server_state_failed),
+                btnText = getString(R.string.android_server_btn_Restart),
+                command = Command.RESTART,
+            )
+        }
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        serverName = intent?.getStringExtra(EXTRA_SERVER_NAME)
+
+        val command = intent?.getStringExtra(EXTRA_COMMAND)?.let { Command.valueOf(it) }
+
+        Log.d(javaClass.simpleName, "onStartCommand: $command")
 
         when (command) {
-            COMMAND_RESTART -> {
-                port = intent!!.getIntExtra(EXTRA_SERVER_PORT, port ?: DEFAULT_PORT)
-                startServer(port!!)
+            Command.RESTART -> {
+                server.start()
             }
 
-            COMMAND_STOP -> {
+            Command.STOP -> {
                 stopSelf()
             }
 
             null -> {
-                if (port == null) {
-                    port = intent?.getIntExtra(EXTRA_SERVER_PORT, DEFAULT_PORT) ?: DEFAULT_PORT
-                    startServer(port!!)
+                if (!server.isRunning) {
+                    server.start()
                 }
             }
         }
@@ -92,88 +130,48 @@ class HttpService : Service() {
     }
 
     override fun onDestroy() {
-        httpServer.stop()
-        executorService.shutdownNow()
-        mainHandler.removeCallbacksAndMessages(null)
+        Log.d(javaClass.simpleName, "onDestroy")
+
+        server.stop()
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             stopForeground(STOP_FOREGROUND_REMOVE)
         } else {
             @Suppress("DEPRECATION")
             stopForeground(true)
         }
+
         super.onDestroy()
-    }
-
-    private fun startServer(port: Int) {
-        executorService.submit {
-            mainHandler.post {
-                showNotification(
-                    contentText = getString(R.string.android_server_http_server_state_starting),
-                    btnText = getString(R.string.android_server_btn_stop),
-                    command = COMMAND_STOP,
-                )
-            }
-
-            httpServer.stop()
-
-            try {
-                HttpRegistry.loadDelegate(application)
-                    .forEach {
-                        httpServer.addAction(it.method.name, it.pathRegex, it) { _ ->
-                            when (it.method) {
-                                HttpMethod.GET -> NoRequestBody
-                                HttpMethod.POST -> null
-                            }
-                        }
-                    }
-
-                httpServer.listen(port) ?: throw Exception("Http server start failed")
-
-                mainHandler.post {
-                    showNotification(
-                        contentText = getString(R.string.android_server_http_server_state_running),
-                        btnText = getString(R.string.android_server_btn_stop),
-                        command = COMMAND_STOP,
-                    )
-                }
-            } catch (e: Throwable) {
-                e.printStackTrace()
-
-                mainHandler.post {
-                    showNotification(
-                        contentText = getString(R.string.android_server_http_server_state_failed),
-                        btnText = getString(R.string.android_server_btn_Restart),
-                        command = COMMAND_RESTART,
-                    )
-                }
-            }
-        }
     }
 
     private fun showNotification(
         contentText: String,
         btnText: String,
-        command: Int,
+        command: Command,
     ) {
+        Log.d(javaClass.simpleName, contentText)
         val notification = NotificationUtils.buildHttpServiceNotification(application)
             .setSmallIcon(application.applicationInfo.icon)
-            .setContentTitle(serviceName ?: getString(R.string.android_server_http_server_name))
+            .setContentTitle(serverName ?: getString(R.string.android_server_http_server_name))
             .setContentText(contentText)
             .apply {
-                addAction(
-                    NotificationCompat.Action.Builder(
-                        null,
-                        btnText,
-                        PendingIntent.getService(
-                            application,
-                            command,
-                            Intent(application, HttpService::class.java).also {
-                                it.putExtra(EXTRA_COMMAND, command)
-                            },
-                            PendingIntent.FLAG_UPDATE_CURRENT
-                        )
-                    ).build()
-                )
+                Intent(application, this@HttpService.javaClass).also {
+                    it.putExtra(EXTRA_COMMAND, command.name)
+                    Log.d(javaClass.simpleName, it.toString())
+                }.let { intent ->
+                    addAction(
+                        NotificationCompat.Action.Builder(
+                            null,
+                            btnText,
+                            PendingIntent.getService(
+                                application,
+                                intent.interProcessHashCode,
+                                intent,
+                                PendingIntent.FLAG_UPDATE_CURRENT,
+                            )
+                        ).build()
+                    )
+                }
             }
             .build()
 

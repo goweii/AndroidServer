@@ -7,4 +7,5 @@ import androidx.annotation.Keep
 @Target(AnnotationTarget.CLASS)
 annotation class RestController(
     val path: String = "",
+    val protocol: String = "",
 )

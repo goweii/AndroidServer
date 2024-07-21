@@ -1,6 +1,5 @@
-package per.goweii.androidserver.runtime
+package per.goweii.androidserver.runtime.http
 
-import android.os.Build
 import com.koushikdutta.async.http.body.AsyncHttpRequestBody
 import com.koushikdutta.async.http.body.JSONArrayBody
 import com.koushikdutta.async.http.body.JSONObjectBody
@@ -12,7 +11,10 @@ import org.json.JSONObject
 import per.goweii.androidserver.runtime.annotation.PathVariable
 import per.goweii.androidserver.runtime.annotation.QueryParam
 import per.goweii.androidserver.runtime.annotation.RequestBody
+import per.goweii.androidserver.runtime.exception.RequestException
+import per.goweii.androidserver.runtime.exception.RequestMethodParseException
 import per.goweii.androidserver.runtime.utils.JsonUtils
+import per.goweii.androidserver.runtime.utils.get
 import java.lang.reflect.Method
 
 internal data class RequestParam(
@@ -120,27 +122,7 @@ private class PathVariableExtractor<T>(
     private val converter: Converter<String, T>,
 ) : Extractor<T?> {
     override fun extract(request: AsyncHttpServerRequest, response: AsyncHttpServerResponse): T? {
-        val value = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            request.matcher.group(key)
-        } else {
-            var index = 0
-            val pattern = request.matcher.pattern().pattern()
-            val matcher = """\(\?<(\w+)>.*?\)""".toPattern().matcher(pattern)
-            while (matcher.find()) {
-                index--
-                val group = matcher.group(1)
-                if (group == key) {
-                    index = -index
-                    break
-                }
-            }
-
-            if (index > 0) {
-                request.matcher.group(index)
-            } else {
-                null
-            }
-        }
+        val value = request.matcher[key]
 
         if (value != null) {
             return converter.convert(value)
