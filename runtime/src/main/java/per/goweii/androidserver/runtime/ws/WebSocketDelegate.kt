@@ -8,11 +8,10 @@ import per.goweii.androidserver.runtime.RestDelegate
 
 internal class WebSocketDelegate(
     path: HttpPath,
-    protocol: String,
+    val protocol: String,
     val instance: WebSocketController,
 ) : RestDelegate(
     path = path,
-    protocol = protocol,
 ) {
     companion object {
         private const val TAG = "WebSocketDelegate"

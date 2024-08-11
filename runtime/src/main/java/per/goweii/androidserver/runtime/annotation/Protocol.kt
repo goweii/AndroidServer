@@ -5,6 +5,6 @@ import androidx.annotation.Keep
 @Keep
 @Retention(AnnotationRetention.RUNTIME)
 @Target(AnnotationTarget.CLASS)
-annotation class RestController(
-    val value: String = "",
+annotation class Protocol(
+    val value: String,
 )

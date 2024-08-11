@@ -6,7 +6,7 @@ import com.koushikdutta.async.http.server.AsyncHttpServerResponse
 import per.goweii.androidserver.runtime.annotation.RestController
 import per.goweii.androidserver.runtime.ws.WebSocketController
 
-@RestController(path = "/ws")
+@RestController(value = "/ws")
 class SimpleWsController : WebSocketController {
     override fun onRequest(request: AsyncHttpServerRequest, response: AsyncHttpServerResponse) {
     }

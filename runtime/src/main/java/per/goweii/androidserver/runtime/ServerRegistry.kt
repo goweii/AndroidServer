@@ -5,6 +5,7 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.annotation.WorkerThread
 import dalvik.system.DexFile
+import per.goweii.androidserver.runtime.annotation.Protocol
 import per.goweii.androidserver.runtime.annotation.RequestMapping
 import per.goweii.androidserver.runtime.annotation.RestController
 import per.goweii.androidserver.runtime.http.HttpDelegate
@@ -190,16 +191,17 @@ internal object ServerRegistry {
     private fun parseRestDelegate(clazz: Class<*>): RestDelegate {
         val restController = clazz.getAnnotation(RestController::class.java)!!
 
-        val httpPath = HttpPath(restController.path)
+        val httpPath = HttpPath(restController.value)
 
         val constructor = clazz.getConstructor()
         constructor.isAccessible = true
         val instance = constructor.newInstance()
 
         if (WebSocketController::class.java.isAssignableFrom(clazz)) {
+            val protocol = clazz.getAnnotation(Protocol::class.java)
             return WebSocketDelegate(
                 path = httpPath,
-                protocol = restController.protocol,
+                protocol = protocol?.value ?: "",
                 instance = instance as WebSocketController,
             )
         }
@@ -231,7 +233,6 @@ internal object ServerRegistry {
 
         return HttpDelegate(
             path = httpPath,
-            protocol = restController.protocol,
             requests = requests,
         )
     }

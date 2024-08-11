@@ -181,7 +181,7 @@ abstract class HttpServer {
                     asyncHttpServer.get(delegate.path.pathPattern) { request, response ->
                         delegate.onRequest(request, response)
 
-                        val protocol = delegate.protocol.takeIf { it.isEmpty() }
+                        val protocol = delegate.protocol.takeIf { it.isNotBlank() }
                             ?: request.headers["Sec-WebSocket-Protocol"]
                             ?: ""
 
