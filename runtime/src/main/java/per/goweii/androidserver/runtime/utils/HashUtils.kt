@@ -2,7 +2,10 @@ package per.goweii.androidserver.runtime.utils
 
 object HashUtils {
     fun interProcessHashCode(any: Any): Int {
-        return android.os.Process.myPid() + System.identityHashCode(any)
+        var hash = android.os.Process.myPid()
+        hash = hash shl 24
+        hash = hash or System.identityHashCode(any)
+        return hash
     }
 
     fun innerProcessHashCode(any: Any): Int {
