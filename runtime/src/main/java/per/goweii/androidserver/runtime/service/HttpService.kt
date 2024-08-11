@@ -1,5 +1,6 @@
 package per.goweii.androidserver.runtime.service
 
+import android.app.Application
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
@@ -55,11 +56,16 @@ abstract class HttpService<S : HttpServer> : Service() {
         superClass as ParameterizedType
         val sType = superClass.actualTypeArguments.first()
         sType as Class<*>
-        val constructor = sType.getConstructor()
-        constructor.newInstance() as S
+        try {
+            val constructor = sType.getConstructor()
+            constructor.newInstance() as S
+        } catch (e: Throwable) {
+            val constructor = sType.getConstructor(Application::class.java)
+            constructor.newInstance(application) as S
+        }
     }
 
-    private val id: Int = server.interProcessHashCode
+    private val id: Int = interProcessHashCode
 
     private var serverName: String? = null
     private var serverHost: String? = null

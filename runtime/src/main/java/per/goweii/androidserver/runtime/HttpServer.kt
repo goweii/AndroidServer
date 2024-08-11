@@ -6,6 +6,8 @@ import android.util.ArrayMap
 import android.util.Log
 import com.koushikdutta.async.AsyncServer
 import com.koushikdutta.async.AsyncServerSocket
+import com.koushikdutta.async.AsyncSocket
+import com.koushikdutta.async.callback.ListenCallback
 import com.koushikdutta.async.http.server.AsyncHttpServer
 import com.koushikdutta.async.http.server.AsyncHttpServerRequest
 import com.koushikdutta.async.http.server.AsyncHttpServerResponse
@@ -20,6 +22,7 @@ import per.goweii.androidserver.runtime.ws.WebSocketDelegate
 import java.net.InetAddress
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+
 
 @Suppress("MemberVisibilityCanBePrivate")
 abstract class HttpServer {
@@ -123,9 +126,21 @@ abstract class HttpServer {
                 onRegister(asyncHttpServer)
 
                 val asyncServerSocket = AsyncServer.getDefault().listen(
-                    InetAddress.getByName(host),
-                    port,
-                    asyncHttpServer.listenCallback
+                    InetAddress.getByName(host), port,
+                    object : ListenCallback {
+                        override fun onAccepted(socket: AsyncSocket) {
+                            Log.d(javaClass.simpleName, "onAccepted -> $socket")
+                            onAcceptSocket(socket)
+                        }
+
+                        override fun onListening(socket: AsyncServerSocket) {
+                            asyncHttpServer.listenCallback.onListening(socket)
+                        }
+
+                        override fun onCompleted(ex: java.lang.Exception?) {
+                            asyncHttpServer.listenCallback.onCompleted(ex)
+                        }
+                    }
                 )
 
                 asyncServerSocket ?: throw Exception("Http server start failed")
@@ -220,5 +235,9 @@ abstract class HttpServer {
         mainHandler?.post {
             onFailed?.invoke(e)
         }
+    }
+
+    protected open fun onAcceptSocket(socket: AsyncSocket) {
+        asyncHttpServer.listenCallback.onAccepted(socket)
     }
 }
